@@ -1,1 +1,5 @@
 plan.md
+lignum.*
+/lignum
+.dub/
+*.o

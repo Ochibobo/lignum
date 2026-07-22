@@ -1,0 +1,9 @@
+{
+	"authors": [
+		"Ochibobo"
+	],
+	"copyright": "Copyright © 2026, Ochibobo",
+	"description": "A KV store in D",
+	"license": "MIT",
+	"name": "lignum"
+}
