@@ -92,6 +92,20 @@ __Entry__
     - **Key bytes** - The length of the key bytes is determined by the `Unshared Key Length` and `Shared Key Suffix Length` fields in the entry header.
     - **Value bytes** - The length of the value bytes is determined by the `Value Length` field in the entry header. However, the structure of the value bytes is slightly more complex. 
 
+<div align="center">
+<pre>
+┌───────────────────────┬───────────────────────────────────────────────────────┐
+│       KEY BYTES       │                      VALUE BYTES                      │
+├───────────┬───────────┼───────────────────────────┬───────────────────────────┤
+│  Shared   │ Unshared  │       RECORD HEADER       │        RECORD DATA        │
+│  Suffix   │    Key    │         (16 Bytes)        │      (Variable Size)      │
+│ (Var Size)│ (Var Size)│                           │                           │
+└───────────┴───────────┴───────────────────────────┴───────────────────────────┘
+</pre>
+<p><b>Entry Data Layout</b></p>
+</div>
+
+
 - The `value bytes` is divided into:
     - **Record Header** - A 16-byte header that contains metadata about the value.
     - **Record Data** - The actual value data.
@@ -157,18 +171,6 @@ __Entry__
 <p><b>Record Data Layout</b></p>
 </div>
 
-<div align="center">
-<pre>
-┌───────────────────────┬───────────────────────────────────────────────────────┐
-│       KEY BYTES       │                      VALUE BYTES                      │
-├───────────┬───────────┼───────────────────────────┬───────────────────────────┤
-│  Shared   │ Unshared  │       RECORD HEADER       │        RECORD DATA        │
-│  Suffix   │    Key    │         (16 Bytes)        │      (Variable Size)      │
-│ (Var Size)│ (Var Size)│                           │                           │
-└───────────┴───────────┴───────────────────────────┴───────────────────────────┘
-</pre>
-<p><b>Entry Data Layout</b></p>
-</div>
 
 __Block Footer__
 - The footer is a fixed-size block of bytes that contains metadata about the block. It's structure is as follows:
