@@ -285,3 +285,45 @@ __Index Block__
 </pre>
 <p><b>Index Block Layout</b></p>
 </div>
+
+
+__Filter Block__
+
+- Stores block filter data instead of ordered keys; no `restart points`.
+- It is structured as follows:
+    - **Bloom Filters** - Bloom filters for each data block.
+    - **Filter Offsets** - Offsets to the start of each Bloom filter.
+    - **Filter Count** - The number of Bloom filters in the block.
+    - **Codec** - The codec used to compress the block.
+    - **CRC** - A CRC checksum of the block.
+
+<div align="center">
+<pre>
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                                 FILTER BLOCK                                  │
+├───────────────────────────────────────────────────────────────────────────────┤
+│                                 Bloom Filters                                 │
+│          ┌───────────────────┬───────────────────┬───────────────────┐        │
+│          │     Filter 1      │     Filter 2      │     Filter ...    │        │
+│          │  (Variable Size)  │  (Variable Size)  │  (Variable Size)  │        │
+│          └───────────────────┴───────────────────┴───────────────────┘        │
+├───────────────────────────────────────────────────────────────────────────────┤
+│                                Filter Offsets                                 │
+│          ┌───────────────────┬───────────────────┬───────────────────┐        │
+│          │     Offset 1      │     Offset 2      │     Offset ...    │        │
+│          │     (4 Bytes)     │     (4 Bytes)     │     (4 Bytes)     │        │
+│          └───────────────────┴───────────────────┴───────────────────┘        │
+├───────────────────────────────────────────────────────────────────────────────┤
+│                                 Filter Count                                  │
+│                                  (4 Bytes)                                    │
+├───────────────────────────────────────────────────────────────────────────────┤
+│                                 Block Footer                                  │
+│          ┌───────────────────────────────────┬───────────────────────────────┐        │
+│          │               Codec               │              CRC              │        │
+│          │             (1 Byte)              │           (4 Bytes)           │
+│          └───────────────────────────────────┴───────────────────────────────┘        │
+└───────────────────────────────────────────────────────────────────────────────┘
+</pre>
+<p><b>Filter Block Layout</b></p>
+</div>
+
