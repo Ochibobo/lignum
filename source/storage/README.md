@@ -209,3 +209,79 @@ packet
 96-103: "Codec"
 104-127: "CRC"
 ```
+
+
+#### General SSTable Structure of the Duramen Storage Engine
+
+- Duramen's SSTable consists of the following parts:
+    - **A set of Data Entries** - A Data Entry is a fixed-size block of bytes that contains key-value pairs.
+    - **Index Block** - An index block is a variable-length block of bytes that contains offsets to the start of each data block.
+    - **Filter Block** - A filter block is a variable-length block of bytes that contains Bloom filters for each data block.
+    - **Metaindex Block** - A metaindex block is a variable-length block of bytes that contains offsets to the start of each index block.
+    - **SSTable Footer** - The footer is a fixed-size block of bytes and is as follows:
+        - **Metaindex BlockHandle** - A handle to the metaindex block.
+        - **Index BlockHandle** - A handle to the index block.
+        - **Format Version** - The format version of the SSTable which allows for the future evolution of the SSTable format.
+        - **Magic Number** - identifies the file as a `Duramen` SSTable.
+
+- The structure of the `BlockHandle` is as follows:
+    - **Offset** - The offset of the block.
+    - **Length** - The length of the block.
+
+
+__Index Block__
+- The index block is a variable-length block of bytes that contains offsets to the start of each data block.
+- It comprises of the following:
+    - **Index Entries** - A list of index entries. Each entry has the following structure:
+        - **Separator Key** - The separator key between two data blocks.
+        - **Block Handle** - The handle to the data block.
+            - **Offset** - The offset of the block.
+            - **Length** - The length of the block.
+
+<div align="center">
+<pre>
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                                  INDEX ENTRY                                  │
+├───────────────────────────────────────┬───────────────────────────────────────┤
+│             Separator Key             │             Block Handle              │
+├───────────────────────────────────────┼───────────────────┬───────────────────┤
+│          Key Bytes / Suffix           │    Block Offset   │   Block Length    │
+│            (Variable Size)            │ (Variable/Varint) │ (Variable/Varint) │
+└───────────────────────────────────────┴───────────────────┴───────────────────┘
+</pre>
+<p><b>Index Entry Layout</b></p>
+</div>
+
+- **Restart Array** - An array of offsets to "restart points" within the block. These restart points are evenly distributed throughout the block. Each entry is called a `restart offset` and is a 4-byte number.
+- **Restart Count** - A 2-byte number that identifies the number of restart points in the block.
+- **Codec** - A 1-byte field that identifies the codec used to compress the block.
+- **CRC** - A 4-byte CRC checksum of the block.
+
+<div align="center">
+<pre>
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                                  INDEX BLOCK                                  │
+├───────────────────────────────────────────────────────────────────────────────┤
+│                                 Index Entries                                 │
+│          ┌───────────────────┬───────────────────┬───────────────────┐        │
+│          │      Entry 1      │      Entry 2      │      Entry ...    │        │
+│          └───────────────────┴───────────────────┴───────────────────┘        │
+├───────────────────────────────────────────────────────────────────────────────┤
+│                                Restart Section                                │
+│          ┌───────────────────────────────────────────────────────────┐        │
+│          │                       Restart Array                       │        │
+│          │                      (Variable Size)                      │        │
+│          ├───────────────────────────────────────────────────────────┤        │
+│          │                       Restart Count                       │        │
+│          │                         (2 Bytes)                         │        │
+│          └───────────────────────────────────────────────────────────┘        │
+├───────────────────────────────────────────────────────────────────────────────┤
+│                                 Block Footer                                  │
+│          ┌───────────────────────────────────┬───────────────────────────────┐        │
+│          │               Codec               │              CRC              │        │
+│          │             (1 Byte)              │           (4 Bytes)           │
+│          └───────────────────────────────────┴───────────────────────────────┘        │
+└───────────────────────────────────────────────────────────────────────────────┘
+</pre>
+<p><b>Index Block Layout</b></p>
+</div>
