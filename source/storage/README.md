@@ -41,6 +41,7 @@
 Key-Value Pairs | Footer |
 ```
 _(Duramen's block does not store any header information)_.
+
 __Entry__
 - Key-Value paris are stored as entries. Each block entry contain a fixed size header and a variable size data section. 
 - The `Entry Header` is of size 24 bytes and is located at the beginning of the entry. Its structure is as follows:
