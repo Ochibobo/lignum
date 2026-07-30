@@ -30,7 +30,7 @@
 
 - At the top-most level, an SSTable is a sequence of blocks. These blocks are of fixed size and are stored contiguously on disk.
 
-- Within each block, there are (4KB) data blocks. Each data block stores key-value pairs contiguously. Then section that follows gives an overview of the structure of a data block.
+- Within each SSTable, there are (4KB) data blocks. Each data block stores key-value pairs contiguously. Then section that follows gives an overview of the structure of a data block.
 
 
 ##### Duramen Data Block Structure
@@ -38,31 +38,9 @@
 - A data block in `Duramen` is a 4Kb fixed-size blocks of bytes that stores key-value pairs contiguously. Its general structure is as follows:
 
 ```
-| Header | Key-Value Pairs | Footer |
+Key-Value Pairs | Footer |
 ```
-
-__Block Header__
-- The header is a fixed-size block of bytes that contains metadata about the block. It is of size 12 bytes and is located at the beginning of the block. Its structure is as follows:
-
-<div align="center">
-<pre>
-┌────────────────────────┬────────────────────────┬────────────────────────┐
-│      Magic Number      │     Block Version      │       Block Type       │
-│       (2 Bytes)        │       (2 Bytes)        │       (2 Bytes)        │
-├────────────────────────┴────────────────────────┼────────────────────────┤
-│           Number of Key-Value Pairs             │         Flags          │
-│                   (4 Bytes)                     │       (2 Bytes)        │
-└─────────────────────────────────────────────────┴────────────────────────┘
-</pre>
-<p><b>Block Header Layout</b></p>
-</div>
-
-- **Magic Number** - A 2-byte magic number that help detect corruption and ensures we are reading the correct block format.
-- **Block Version** - A 2-byte version number that identifies the `duramen` version a block is associated with.
-- **Block Type** - A 2-byte number that identifies the type of the block.
-- **Number of Key-Value Pairs** - A 4-byte number that identifies the number of key-value pairs in the block.
-- **Flags** - A 2-byte number that identifies the flags for the block.
-
+_(Duramen's block does not store any header information)_.
 __Entry__
 - Key-Value paris are stored as entries. Each block entry contain a fixed size header and a variable size data section. 
 - The `Entry Header` is of size 24 bytes and is located at the beginning of the entry. Its structure is as follows:
