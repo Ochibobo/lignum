@@ -38,7 +38,7 @@
 - A data block in `Duramen` is a 4Kb fixed-size blocks of bytes that stores key-value pairs contiguously. Its general structure is as follows:
 
 ```
-Key-Value Pairs | Footer |
+Key-Value Pairs | Restart Section | Block Footer |
 ```
 _(Duramen's block does not store any header information)_.
 
@@ -150,26 +150,42 @@ __Entry__
 <p><b>Record Data Layout</b></p>
 </div>
 
-
-__Block Footer__
-- The footer is a fixed-size block of bytes that contains metadata about the block. It's structure is as follows:
-    - **Restart Array** - A fixed-size array of offsets to "restart points" within the block. These restart points are evenly distributed throughout the block.
+__Restart Section__
+- The restart section is a variable-length block of bytes that contains metadata about restart points within the block. It's structure is as follows:
+    - **Restart Array** - A fixed-size array of offsets to "restart points" within the block. These restart points are evenly distributed throughout the block. Each entry is called a `restart offset` and is a 4-byte number.
     - **Restart Count** - A 2-byte number that identifies the number of restart points in the block.
-    - **CRC** - A 4-byte CRC checksum of the block.
 
 <div align="center">
 <pre>
 ┌───────────────────────────────────────────────────────────────────────────────┐
 │                                 Restart Array                                 │
 │                                (Variable Size)                                │
+├───────────────────────────────────────────────────────────────────────────────┤
+│                                 Restart Count                                 │
+│                                   (2 Bytes)                                   │
+└───────────────────────────────────────────────────────────────────────────────┘
+</pre>
+<p><b>Restart Section Layout</b></p>
+</div>
+
+__Block Footer__
+- The block footer is a 5-byte fixed-size block of bytes that contains metadata about the block. Its structure is as follows:
+    - **Codec** - A 1-byte field that identifies the codec used to compress the block.
+    - **CRC** - A 4-byte CRC checksum of the block.
+- The footer does not undergo compression, and its CRC is calculated over the raw uncompressed data of the block.
+
+<div align="center">
+<pre>
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                                  Block Footer                                 │
+│                            (Fixed Size - 5 Bytes)                             │
 ├───────────────────────────────────────┬───────────────────────────────────────┤
-│             Restart Count             │                  CRC                  │
-│               (2 Bytes)               │               (4 Bytes)               │
+│                Codec                  │                  CRC                  │
+│               (1 Byte)                │               (4 Bytes)               │
 └───────────────────────────────────────┴───────────────────────────────────────┘
 </pre>
 <p><b>Block Footer Layout</b></p>
 </div>
-
 
 #### General Block Structure of the Duramen Storage Engine
 
@@ -181,19 +197,15 @@ __Block Footer__
 title: "Duramen KV Block Structure"
 ---
 packet
-0-4: "Magic Number"
-5-9: "Block Version"
-10-14: "Block Type"
-15-26: "Number of Key-Value Pairs"
-27-31: "Flags"
-32-36: "Shared Key Suffix Length"
-37-41: "Unshared Key Length"
-42-46: "Value Length"
-47-51: "Flags"
-52-63: "Timestamp"
-64-69: "Key bytes"
-70-95: "Value bytes"
-96-115: "Restart Array"
-116-119: "Restart Count"
-120-127: "CRC"
+0-4: "Shared Key Suffix Length"
+5-9: "Unshared Key Length"
+10-14: "Value Length"
+15-19: "Flags"
+20-31: "Timestamp"
+32-37: "Key bytes"
+38-63: "Value bytes"
+64-79: "Restart Array"
+80-95: "Restart Count"
+96-103: "Codec"
+104-127: "CRC"
 ```
