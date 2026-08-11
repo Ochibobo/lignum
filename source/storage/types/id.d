@@ -6,5 +6,5 @@ module storage.types.id;
 */
 interface ID(T)
 {
-    @property T value();
+    @property T value() const;
 }
