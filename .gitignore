@@ -3,4 +3,4 @@ lignum.*
 /lignum
 .dub/
 *.o
-/lignum-test-library
+/lignum-test-library*

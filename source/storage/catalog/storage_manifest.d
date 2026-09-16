@@ -50,7 +50,7 @@ struct DatabaseDescriptor
 }
 
 /**
-*   A storage manifest describes the     @Unique() location and properties of the databases on disk.
+*   A storage manifest describes the @Unique() location and properties of the databases on disk.
 *   It contains metadata about all databases reachable via the file paths.
 */
 struct StorageManifest
