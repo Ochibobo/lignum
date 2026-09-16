@@ -1,26 +1,47 @@
 module storage.catalog.storage_manifest;
 
-import std.datetime : SysTime;
-import std.uuid : UUID;
+import std.datetime : Clock, SysTime;
+import std.format : format;
+import std.string : indexOf;
 import storage.types.validation : MaxLength, NotEmpty;
 
 /** 
  * The unique identifier for a database.
  */
-struct DatabaseID(T)
+struct DatabaseID
 {
-    private T _value;
+    private string _value;
+    private SysTime commitTimestamp;
 
-    this(T value)
+    this(string value)
     {
         _value = value;
+        commitTimestamp = Clock.currTime();
     }
 
-    @property
-    T value() const
+    string value() const
     {
         return _value;
     }
+
+    SysTime getCommitTimestamp() const
+    {
+        return commitTimestamp;
+    }
+
+    string toString() const {
+        return format!"DatabaseID: %s, Commit Timestamp: %s"(this._value, this.commitTimestamp);
+    }
+}
+
+unittest
+{
+    auto id = DatabaseID("db-123");
+
+    assert(id.value == "db-123");
+    assert(id.getCommitTimestamp() <= Clock.currTime());
+    assert(id.toString.indexOf("DatabaseID:") == 0);
+    assert(id.toString.indexOf("db-123") > 0);
 }
 
 /**
