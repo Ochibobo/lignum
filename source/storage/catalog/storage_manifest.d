@@ -1,10 +1,10 @@
 module storage.catalog.storage_manifest;
 
 import object : hashOf;
-import std.container: RedBlackTree;
+import std.container : RedBlackTree;
 import std.datetime : Clock, SysTime;
 import std.format : format;
-import std.path: buildPath;
+import std.path : buildPath;
 import std.string : startsWith;
 import std.typecons : Nullable;
 import storage.types.validation : MaxLength, NotEmpty;
@@ -34,7 +34,8 @@ struct DatabaseID
         return _commitTimestamp;
     }
 
-    string toString() const {
+    string toString() const
+    {
         return format!"DatabaseID: %s, Commit Timestamp: %s"(this._value, this._commitTimestamp);
     }
 
@@ -88,7 +89,8 @@ struct DatabaseDescriptor
 
     @disable this(); // Disable default constructor to enforce initialization of all fields.
 
-    this(DatabaseID id, string name, string notes) {
+    this(DatabaseID id, string name, string notes)
+    {
         this._id = id;
         this._name = name;
         this._notes = notes;
@@ -96,19 +98,42 @@ struct DatabaseDescriptor
         this._lastModifiedAt = Clock.currTime();
     }
 
-    @property DatabaseID id() const { return _id; }
-    @property string name() const { return _name; }
-    @property void name(const string newName) {
-         _name = newName;
+    @property DatabaseID id() const
+    {
+        return _id;
+    }
+
+    @property string name() const
+    {
+        return _name;
+    }
+
+    @property void name(const string newName)
+    {
+        _name = newName;
         _lastModifiedAt = Clock.currTime();
     }
-    @property string notes() const { return _notes; }
-    @property void notes(const string newNotes) {
+
+    @property string notes() const
+    {
+        return _notes;
+    }
+
+    @property void notes(const string newNotes)
+    {
         _notes = newNotes;
         _lastModifiedAt = Clock.currTime();
     }
-    @property string hostPath() const { return _hostPath; }
-    @property SysTime lastModifiedAt() const { return _lastModifiedAt; }
+
+    @property string hostPath() const
+    {
+        return _hostPath;
+    }
+
+    @property SysTime lastModifiedAt() const
+    {
+        return _lastModifiedAt;
+    }
 }
 
 unittest
@@ -145,7 +170,9 @@ final class StorageManifest
     private RedBlackTree!string _databaseNameIndex;
     private DatabaseDescriptor[] _databases;
 
-    private this() {}
+    private this()
+    {
+    }
 
     static StorageManifest getInstance()
     {
@@ -156,20 +183,42 @@ final class StorageManifest
         return _instance;
     }
 
-    @property DatabaseDescriptor[] databases() { return _databases.dup; }
+    @property DatabaseDescriptor[] databases()
+    {
+        return _databases.dup;
+    }
 
-    void addDatabase(const DatabaseDescriptor descriptor) {}
+    void addDatabase(const DatabaseDescriptor descriptor)
+    {
+    }
 
-    void updateDatabase(const DatabaseDescriptor descriptor) {}
+    void updateDatabase(const DatabaseDescriptor descriptor)
+    {
+    }
 
-    Nullable!DatabaseDescriptor getDatabase(const DatabaseID id) const { return Nullable!DatabaseDescriptor.init; }
+    Nullable!DatabaseDescriptor getDatabase(const DatabaseID id) const
+    {
+        return Nullable!DatabaseDescriptor.init;
+    }
 
-    Nullable!DatabaseDescriptor getDatabaseByName(const string name) const { return Nullable!DatabaseDescriptor.init; }
+    Nullable!DatabaseDescriptor getDatabaseByName(const string name) const
+    {
+        return Nullable!DatabaseDescriptor.init;
+    }
 
-    bool contains(const DatabaseDescriptor descriptor) const { return false; }
+    bool contains(const DatabaseDescriptor descriptor) const
+    {
+        return false;
+    }
 
-    bool removeDatabase(const DatabaseID id){ return false; }
+    bool removeDatabase(const DatabaseID id)
+    {
+        return false;
+    }
 
     // TODO: tabular string format.
-    override string toString() const{ return ""; }
+    override string toString() const
+    {
+        return "";
+    }
 }
