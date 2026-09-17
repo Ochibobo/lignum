@@ -1,10 +1,12 @@
 module storage.catalog.storage_manifest;
 
 import object : hashOf;
+import std.container: RedBlackTree;
 import std.datetime : Clock, SysTime;
 import std.format : format;
 import std.path: buildPath;
 import std.string : startsWith;
+import std.typecons : Nullable;
 import storage.types.validation : MaxLength, NotEmpty;
 
 const string DATABASES_HOST_DIR = "../../../databases";
@@ -136,7 +138,38 @@ unittest
 *   A storage manifest describes the @Unique() location and properties of the databases on disk.
 *   It contains metadata about all databases reachable via the file paths.
 */
-struct StorageManifest
+final class StorageManifest
 {
+    private static StorageManifest _instance;
+    private RedBlackTree!string _databaseIDIndex;
+    private RedBlackTree!string _databaseNameIndex;
+    private DatabaseDescriptor[] _databases;
 
+    private this() {}
+
+    static StorageManifest getInstance()
+    {
+        if (_instance is null)
+        {
+            _instance = new StorageManifest();
+        }
+        return _instance;
+    }
+
+    @property DatabaseDescriptor[] databases() { return _databases.dup; }
+
+    void addDatabase(const DatabaseDescriptor descriptor) {}
+
+    void updateDatabase(const DatabaseDescriptor descriptor) {}
+
+    Nullable!DatabaseDescriptor getDatabase(const DatabaseID id) const { return Nullable!DatabaseDescriptor.init; }
+
+    Nullable!DatabaseDescriptor getDatabaseByName(const string name) const { return Nullable!DatabaseDescriptor.init; }
+
+    bool contains(const DatabaseDescriptor descriptor) const { return false; }
+
+    bool removeDatabase(const DatabaseID id){ return false; }
+
+    // TODO: tabular string format.
+    override string toString() const{ return ""; }
 }
