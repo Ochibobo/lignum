@@ -2,7 +2,7 @@ module storage.catalog.storage_manifest;
 
 import std.datetime : Clock, SysTime;
 import std.format : format;
-import std.string : indexOf;
+import std.string : startsWith;
 import storage.types.validation : MaxLength, NotEmpty;
 
 /** 
@@ -32,16 +32,31 @@ struct DatabaseID
     string toString() const {
         return format!"DatabaseID: %s, Commit Timestamp: %s"(this._value, this.commitTimestamp);
     }
+
+    bool opEquals(const DatabaseID other) const
+    {
+        return this._value == other._value;
+    }
+
+    size_t toHash() const
+    {
+        return hashOf(this._value);
+    }
 }
 
 unittest
 {
-    auto id = DatabaseID("db-123");
+    auto id1 = DatabaseID("db-123");
+    auto id2 = DatabaseID("db-123");
+    auto id3 = DatabaseID("db-456");
 
-    assert(id.value == "db-123");
-    assert(id.getCommitTimestamp() <= Clock.currTime());
-    assert(id.toString.indexOf("DatabaseID:") == 0);
-    assert(id.toString.indexOf("db-123") > 0);
+    assert(id1 == id2);
+    assert(!(id1 == id3));
+    assert(id1.toHash() == id2.toHash());
+    assert(id1.toHash() != id3.toHash());
+    assert(id1.value == "db-123");
+    assert(id1.getCommitTimestamp() <= Clock.currTime());
+    assert(id1.toString.startsWith("DatabaseID: db-123"));
 }
 
 /**
