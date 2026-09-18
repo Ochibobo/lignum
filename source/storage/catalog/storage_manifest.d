@@ -157,11 +157,13 @@ struct DatabaseDescriptor
     void markForDeletion()
     {
         _storageState = StorageState.MARKED_FOR_DELETION;
+        _lastModifiedAt = Clock.currTime();
     }
 
     void markAsActive()
     {
         _storageState = StorageState.ACTIVE;
+        _lastModifiedAt = Clock.currTime();
     }
 }
 
