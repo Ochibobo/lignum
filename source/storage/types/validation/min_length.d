@@ -6,6 +6,11 @@ import std.utf : count;
 
 import storage.types.validation.validator;
 
+version (Have_unit_threaded)
+{
+    import unit_threaded;
+}
+
 /**
  * Marks a string field with its minimum permitted number of Unicode code points.
  *
@@ -33,7 +38,7 @@ struct MinLength
     }
 }
 
-unittest
+@("MinLength validates Unicode code point limits") unittest
 {
     struct Example
     {

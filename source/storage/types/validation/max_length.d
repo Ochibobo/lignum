@@ -5,6 +5,11 @@ import std.traits : isSomeString;
 import std.utf : count;
 import storage.types.validation.validator : ValidationException, Validator, validate;
 
+version (Have_unit_threaded)
+{
+    import unit_threaded;
+}
+
 /**
  * Marks a string field with its maximum permitted number of Unicode code points.
  *
@@ -32,7 +37,7 @@ struct MaxLength
     }
 }
 
-unittest
+@("MaxLength validates Unicode code point limits") unittest
 {
     struct Example
     {

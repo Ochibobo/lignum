@@ -4,6 +4,11 @@ import std.format : format;
 import std.traits : isSomeString;
 import storage.types.validation.validator;
 
+version (Have_unit_threaded)
+{
+    import unit_threaded;
+}
+
 /**
  * Marks a string field as being non-empty.
  *
@@ -26,7 +31,7 @@ struct NotEmpty
     }
 }
 
-unittest
+@("NotEmpty rejects empty strings") unittest
 {
     struct Example
     {

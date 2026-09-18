@@ -3,6 +3,11 @@ module storage.types.validation.validator;
 import std.format : format;
 import std.traits : FieldNameTuple, hasUDA;
 
+version (Have_unit_threaded)
+{
+    import unit_threaded;
+}
+
 /** Marks a struct as being a validator **/
 struct Validator
 {
@@ -55,7 +60,7 @@ void validate(T)(auto ref const T value)
     }
 }
 
-unittest
+@("Validator invokes supported field attributes") unittest
 {
     @Validator
     struct MustBePositive

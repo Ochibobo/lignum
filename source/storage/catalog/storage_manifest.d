@@ -11,6 +11,18 @@ import std.typecons : Nullable;
 import std.variant : Variant;
 import storage.types.validation : MaxLength, NotEmpty;
 
+version (Have_unit_threaded)
+{
+    import unit_threaded;
+}
+else
+{
+    enum Serial
+    {
+        fallback,
+    }
+}
+
 const string DATABASES_HOST_DIR = "../../../databases";
 
 /** 
@@ -62,7 +74,7 @@ struct DatabaseID
     }
 }
 
-unittest
+@("DatabaseID compares and hashes by value") unittest
 {
     auto id1 = DatabaseID("db-123");
     auto id2 = DatabaseID("db-123");
@@ -169,7 +181,7 @@ struct DatabaseDescriptor
     }
 }
 
-unittest
+@("DatabaseDescriptor initializes and updates metadata") unittest
 {
     auto id = DatabaseID("db-123");
     auto descriptor = DatabaseDescriptor(id, "alpha", "initial notes");
@@ -351,7 +363,7 @@ struct DatabaseDescriptorDelta
  */
 alias StorageManifestEntry = SumType!(DatabaseDescriptorSnapshot, DatabaseDescriptorDelta);
 
-unittest
+@("Manifest entries represent snapshots and deltas") unittest
 {
     auto id = DatabaseID("db-123");
     auto descriptor = DatabaseDescriptor(id, "alpha", "initial notes");
@@ -457,7 +469,8 @@ final class StorageManifest
     }
 }
 
-unittest
+@Serial
+@("StorageManifest stores snapshot and delta entries") unittest
 {
     auto manifest = StorageManifest.getInstance();
     auto initialEntryCount = manifest.entries.length;
