@@ -10,6 +10,16 @@ import std.typecons : Nullable;
 import storage.types.validation : MaxLength, NotEmpty;
 
 const string DATABASES_HOST_DIR = "../../../databases";
+
+/** 
+ * A marker for a database state.
+ */
+enum StorageState
+{
+    ACTIVE,
+    MARKED_FOR_DELETION,
+}
+
 /** 
  * The unique identifier for a database.
  */
@@ -87,6 +97,9 @@ struct DatabaseDescriptor
     /// The time when the database was last modified.
     private SysTime _lastModifiedAt;
 
+    // Whether the database represented by this descriptor is active or not
+    private StorageState _storageState;
+
     @disable this(); // Disable default constructor to enforce initialization of all fields.
 
     this(DatabaseID id, string name, string notes)
@@ -96,6 +109,7 @@ struct DatabaseDescriptor
         this._notes = notes;
         this._hostPath = buildPath(DATABASES_HOST_DIR, id.value);
         this._lastModifiedAt = Clock.currTime();
+        this._storageState = StorageState.ACTIVE;
     }
 
     @property DatabaseID id() const
@@ -134,6 +148,21 @@ struct DatabaseDescriptor
     {
         return _lastModifiedAt;
     }
+
+    @property StorageState storageState() const
+    {
+        return _storageState;
+    }
+
+    void markForDeletion()
+    {
+        _storageState = StorageState.MARKED_FOR_DELETION;
+    }
+
+    void markAsActive()
+    {
+        _storageState = StorageState.ACTIVE;
+    }
 }
 
 unittest
@@ -147,6 +176,13 @@ unittest
     assert(descriptor.notes == "initial notes");
     assert(descriptor.hostPath == expectedHostPath);
     assert(descriptor.lastModifiedAt <= Clock.currTime());
+    assert(descriptor.storageState == StorageState.ACTIVE);
+
+    descriptor.markForDeletion();
+    assert(descriptor.storageState == StorageState.MARKED_FOR_DELETION);
+
+    descriptor.markAsActive();
+    assert(descriptor.storageState == StorageState.ACTIVE);
 
     auto outdatedLastModifiedAt = descriptor.lastModifiedAt;
     descriptor.name = "beta";
