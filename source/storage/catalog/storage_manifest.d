@@ -6,7 +6,9 @@ import std.datetime : Clock, SysTime;
 import std.format : format;
 import std.path : buildPath;
 import std.string : startsWith;
+import std.sumtype : SumType, match;
 import std.typecons : Nullable;
+import std.variant : Variant;
 import storage.types.validation : MaxLength, NotEmpty;
 
 const string DATABASES_HOST_DIR = "../../../databases";
@@ -197,6 +199,208 @@ unittest
     static assert(!__traits(compiles, DatabaseDescriptor()));
 }
 
+/** 
+ * DatabaseDescriptors have a different disk representation, depending on whether
+ * an entry in the manifest is a snapshot of the entire descriptor or just a delta.
+ */
+
+/**
+ * Contains the entire payload of the DatabaseDescriptor.
+ */
+struct DatabaseDescriptorSnapshot
+{
+    private DatabaseDescriptor _databaseDescriptor;
+
+    @disable this();
+
+    this(DatabaseDescriptor databaseDescriptor)
+    {
+        this._databaseDescriptor = databaseDescriptor;
+    }
+
+    @property DatabaseDescriptor databaseDescriptor() const
+    {
+        return this._databaseDescriptor;
+    }
+
+    // TODO: fallsback to the DatabaseDescriptor toString()
+    string toString() const
+    {
+        return "";
+    }
+}
+
+/**
+ * Set of actions associated with updating a DatabaseDescriptor.
+ */
+enum DatabaseDescriptorUpdateAction
+{
+    UPDATE,
+    DELETE,
+}
+
+/** 
+ * Description of the field payload used in the delta operation.
+ */
+struct DatabaseDescriptorDeltaFieldDefinition
+{
+    private string _fieldName;
+    private Variant _fieldValue;
+
+    @disable this();
+
+    this(const string fieldName, const Variant fieldValue)
+    {
+        this._fieldName = fieldName;
+        this._fieldValue = fieldValue;
+    }
+
+    @property string fieldName() const
+    {
+        return this._fieldName;
+    }
+
+    @property Variant fieldValue() const
+    {
+        return this._fieldValue;
+    }
+
+    TypeInfo fieldType() const
+    {
+        return this._fieldValue.type;
+    }
+
+    // TODO: implement toString
+    string toString() const
+    {
+        return "";
+    }
+}
+
+/** 
+ * The entire Delta payload, consisting of the action & the field definition.
+ */
+struct DatabaseDescriptorDeltaPayload
+{
+    private DatabaseDescriptorUpdateAction _action;
+    private Nullable!DatabaseDescriptorDeltaFieldDefinition _deltaFieldDefinition;
+
+    @disable this();
+
+    this(const DatabaseDescriptorUpdateAction action, const Nullable!DatabaseDescriptorDeltaFieldDefinition deltaFieldDefinition)
+    {
+        this._action = action;
+        this._deltaFieldDefinition = deltaFieldDefinition;
+    }
+
+    @property DatabaseDescriptorUpdateAction action() const
+    {
+        return this._action;
+    }
+
+    @property Nullable!DatabaseDescriptorDeltaFieldDefinition deltaFieldDefinition() const
+    {
+        return this._deltaFieldDefinition;
+    }
+}
+
+/** 
+ * Contains a delta of the DatabaseDescriptor.
+ * It is used for efficient updates and storage.
+ * Instead of storing a replica of the entire descriptor upon updates,
+ * we only store the `UpdatePayload` of the descriptor.
+ *
+ * `Duramen` is an immutable store, so updates are not supported.
+ *
+ * This is then re-built when the we load the descriptors in memory.
+ */
+struct DatabaseDescriptorDelta
+{
+    private DatabaseID _databaseID;
+    private DatabaseDescriptorDeltaPayload _payload;
+
+    @disable this();
+
+    this(const DatabaseID databaseID, const DatabaseDescriptorDeltaPayload payload)
+    {
+        this._databaseID = databaseID;
+        this._payload = payload;
+    }
+
+    @property DatabaseID databaseID() const
+    {
+        return this._databaseID;
+    }
+
+    @property DatabaseDescriptorDeltaPayload payload() const
+    {
+        return this._payload;
+    }
+
+    // TODO: implement toString!
+    string toString() const
+    {
+        return "";
+    }
+}
+
+/** 
+ * An entry in the StorageManifest can either be a `DatabaseDescriptorSnapshot`
+ * or a `DatabaseDescriptorDelta`.
+ * This `StorageManifestEntry` is a `Union` of both
+ */
+alias StorageManifestEntry = SumType!(DatabaseDescriptorSnapshot, DatabaseDescriptorDelta);
+
+unittest
+{
+    auto id = DatabaseID("db-123");
+    auto descriptor = DatabaseDescriptor(id, "alpha", "initial notes");
+    auto snapshot = DatabaseDescriptorSnapshot(descriptor);
+    StorageManifestEntry snapshotEntry = snapshot;
+
+    assert(snapshot.databaseDescriptor.id == id);
+    assert(snapshot.databaseDescriptor.name == "alpha");
+    assert(snapshotEntry.match!(
+            (ref DatabaseDescriptorSnapshot storedSnapshot) => true,
+            (ref DatabaseDescriptorDelta storedDelta) => false,
+    ));
+
+    Variant fieldValue = "updated notes";
+    auto fieldDefinition = DatabaseDescriptorDeltaFieldDefinition("notes", fieldValue);
+    Nullable!DatabaseDescriptorDeltaFieldDefinition nullableFieldDefinition = fieldDefinition;
+    auto payload = DatabaseDescriptorDeltaPayload(
+        DatabaseDescriptorUpdateAction.UPDATE,
+        nullableFieldDefinition,
+    );
+    auto delta = DatabaseDescriptorDelta(id, payload);
+    StorageManifestEntry deltaEntry = delta;
+
+    assert(delta.databaseID == id);
+    assert(delta.payload.action == DatabaseDescriptorUpdateAction.UPDATE);
+    assert(!delta.payload.deltaFieldDefinition.isNull);
+    assert(delta.payload.deltaFieldDefinition.get.fieldName == "notes");
+    assert(delta.payload.deltaFieldDefinition.get.fieldType == typeid(string));
+    assert(delta.payload.deltaFieldDefinition.get.fieldValue.get!string == "updated notes");
+    assert(deltaEntry.match!(
+            (ref DatabaseDescriptorSnapshot storedSnapshot) => false,
+            (ref DatabaseDescriptorDelta storedDelta) => true,
+    ));
+
+    auto deletePayload = DatabaseDescriptorDeltaPayload(
+        DatabaseDescriptorUpdateAction.DELETE,
+        Nullable!DatabaseDescriptorDeltaFieldDefinition.init,
+    );
+    auto deleteDelta = DatabaseDescriptorDelta(id, deletePayload);
+
+    assert(deleteDelta.payload.action == DatabaseDescriptorUpdateAction.DELETE);
+    assert(deleteDelta.payload.deltaFieldDefinition.isNull);
+
+    static assert(!__traits(compiles, DatabaseDescriptorSnapshot()));
+    static assert(!__traits(compiles, DatabaseDescriptorDeltaFieldDefinition()));
+    static assert(!__traits(compiles, DatabaseDescriptorDeltaPayload()));
+    static assert(!__traits(compiles, DatabaseDescriptorDelta()));
+}
+
 /**
 *   A storage manifest describes the @Unique() location and properties of the databases on disk.
 *   It contains metadata about all databases reachable via the file paths.
@@ -206,7 +410,7 @@ final class StorageManifest
     private static StorageManifest _instance;
     private RedBlackTree!string _databaseIDIndex;
     private RedBlackTree!string _databaseNameIndex;
-    private DatabaseDescriptor[] _databases;
+    private StorageManifestEntry[] _entries;
 
     private this()
     {
@@ -221,17 +425,14 @@ final class StorageManifest
         return _instance;
     }
 
-    @property DatabaseDescriptor[] databases()
+    @property const(StorageManifestEntry)[] entries() const
     {
-        return _databases.dup;
+        return _entries;
     }
 
-    void addDatabase(const DatabaseDescriptor descriptor)
+    void addEntry(StorageManifestEntry entry)
     {
-    }
-
-    void updateDatabase(const DatabaseDescriptor descriptor)
-    {
+        _entries ~= entry;
     }
 
     Nullable!DatabaseDescriptor getDatabase(const DatabaseID id) const
@@ -249,14 +450,31 @@ final class StorageManifest
         return false;
     }
 
-    bool removeDatabase(const DatabaseID id)
-    {
-        return false;
-    }
-
     // TODO: tabular string format.
     override string toString() const
     {
         return "";
     }
+}
+
+unittest
+{
+    auto manifest = StorageManifest.getInstance();
+    auto initialEntryCount = manifest.entries.length;
+    auto id = DatabaseID("db-manifest-entry");
+    auto descriptor = DatabaseDescriptor(id, "manifest entry", "snapshot notes");
+    StorageManifestEntry snapshotEntry = DatabaseDescriptorSnapshot(descriptor);
+    Variant fieldValue = "updated notes";
+    auto fieldDefinition = DatabaseDescriptorDeltaFieldDefinition("notes", fieldValue);
+    Nullable!DatabaseDescriptorDeltaFieldDefinition nullableFieldDefinition = fieldDefinition;
+    auto payload = DatabaseDescriptorDeltaPayload(
+        DatabaseDescriptorUpdateAction.UPDATE,
+        nullableFieldDefinition,
+    );
+    StorageManifestEntry deltaEntry = DatabaseDescriptorDelta(id, payload);
+
+    manifest.addEntry(snapshotEntry);
+    manifest.addEntry(deltaEntry);
+
+    assert(manifest.entries.length == initialEntryCount + 2);
 }
