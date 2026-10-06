@@ -299,7 +299,8 @@ struct DatabaseDescriptorDeltaPayload
 
     @disable this();
 
-    this(const DatabaseDescriptorUpdateAction action, const Nullable!DatabaseDescriptorDeltaFieldDefinition deltaFieldDefinition)
+    this(const DatabaseDescriptorUpdateAction action,
+        const Nullable!DatabaseDescriptorDeltaFieldDefinition deltaFieldDefinition)
     {
         this._action = action;
         this._deltaFieldDefinition = deltaFieldDefinition;

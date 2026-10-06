@@ -4,3 +4,4 @@ lignum.*
 .dub/
 *.o
 /lignum-test-library*
+.gitattributes
