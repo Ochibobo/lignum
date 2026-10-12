@@ -9,7 +9,7 @@ import std.stdio : writeln;
 import std.string : startsWith;
 import std.sumtype : SumType, match;
 import std.typecons : Nullable;
-import storage.types.validation : MaxLength, NotEmpty;
+import storage.types.validation : MaxLength, NotEmpty, validate;
 
 version (Have_unit_threaded)
 {
@@ -175,14 +175,14 @@ struct DatabaseDescriptor
         _lastModifiedAt = Clock.currTime();
     }
 
-    bool isMarkedForDeletion()
+    bool isMarkedForDeletion() const
     {
         return this._storageState == StorageState.MARKED_FOR_DELETION;
     }
 
-    bool isActive()
+    bool isActive() const
     {
-        return this._storageState.ACTIVE;
+        return this._storageState == StorageState.ACTIVE;
     }
 
     void markAsActive()
@@ -204,12 +204,18 @@ struct DatabaseDescriptor
     assert(descriptor.hostPath == expectedHostPath);
     assert(descriptor.lastModifiedAt <= Clock.currTime());
     assert(descriptor.storageState == StorageState.ACTIVE);
+    assert(descriptor.isActive);
+    assert(!descriptor.isMarkedForDeletion);
 
     descriptor.markForDeletion();
     assert(descriptor.storageState == StorageState.MARKED_FOR_DELETION);
+    assert(!descriptor.isActive);
+    assert(descriptor.isMarkedForDeletion);
 
     descriptor.markAsActive();
     assert(descriptor.storageState == StorageState.ACTIVE);
+    assert(descriptor.isActive);
+    assert(!descriptor.isMarkedForDeletion);
 
     auto outdatedLastModifiedAt = descriptor.lastModifiedAt;
     descriptor.name = "beta";
@@ -268,6 +274,7 @@ enum DatabaseDescriptorUpdateAction
  */
 enum DatabaseDescriptorUpdatableField
 {
+    UNKNOWN,
     NAME,
     NOTES
 }
@@ -284,6 +291,9 @@ struct DatabaseDescriptorDeltaFieldDefinition
 
     this(const DatabaseDescriptorUpdatableField fieldName, const string value)
     {
+        enforce(fieldName != DatabaseDescriptorUpdatableField.UNKNOWN,
+            "Database descriptor field cannot be unknown");
+
         this._fieldName = fieldName;
         this._value = value;
     }
@@ -318,12 +328,25 @@ struct DatabaseDescriptorDeltaPayload
     this(const DatabaseDescriptorUpdateAction action,
         const DatabaseDescriptorDeltaFieldDefinition[] deltaFieldDefinitions)
     {
+        enforce(action == DatabaseDescriptorUpdateAction.UPDATE
+                || action == DatabaseDescriptorUpdateAction.DELETE,
+                "Database descriptor update action cannot be unknown");
+
         this._action = action;
 
-        enforce(action == DatabaseDescriptorUpdateAction.UPDATE ? deltaFieldDefinitions.length > 0 : deltaFieldDefinitions.length == 0,
-            "In case of update action, the delta field definition must be present, otherwise it must be absent.");
+        enforce(action == DatabaseDescriptorUpdateAction.UPDATE ?
+                deltaFieldDefinitions.length > 0 : deltaFieldDefinitions.length == 0,
+                "In case of update action, the delta field definition must be present, otherwise it must be absent.");
 
-        this._deltaFieldDefinitions = deltaFieldDefinitions;
+        bool[DatabaseDescriptorUpdatableField] encounteredFields;
+        foreach (const fieldDefinition; deltaFieldDefinitions)
+        {
+            enforce(fieldDefinition.fieldName !in encounteredFields,
+                "A database descriptor field cannot be updated more than once in a delta");
+            encounteredFields[fieldDefinition.fieldName] = true;
+        }
+
+        this._deltaFieldDefinitions = deltaFieldDefinitions.dup;
     }
 
     @property const(DatabaseDescriptorUpdateAction) action() const
@@ -412,7 +435,8 @@ alias CatalogEntry = SumType!(DatabaseDescriptorSnapshot, DatabaseDescriptorDelt
     assert(delta.databaseID == id);
     assert(delta.payload.action == DatabaseDescriptorUpdateAction.UPDATE);
     assert(delta.payload.deltaFieldDefinition.length == 1);
-    assert(delta.payload.deltaFieldDefinition[0].fieldName == DatabaseDescriptorUpdatableField.NOTES);
+    assert(delta.payload.deltaFieldDefinition[0].fieldName == DatabaseDescriptorUpdatableField
+            .NOTES);
     assert(delta.payload.deltaFieldDefinition[0].value == "updated notes");
     assert(deltaEntry.match!(
             (ref DatabaseDescriptorSnapshot storedSnapshot) => false,
@@ -477,16 +501,30 @@ final class DatabaseCatalog
             (const ref DatabaseDescriptorDelta delta) => applyDelta(delta),
         );
 
+        if (auto storedDescriptor = descriptor.id in _databaseByID)
+        {
+            if (storedDescriptor.name != descriptor.name)
+            {
+                _databaseIDByName.remove(storedDescriptor.name);
+            }
+        }
+
         _databaseByID[descriptor.id] = descriptor;
         _databaseIDByName[descriptor.name] = descriptor.id;
     }
 
     private DatabaseDescriptor applySnapshot(const DatabaseDescriptorSnapshot snapshot)
     {
-        _databaseByID[snapshot.databaseDescriptor.id] = snapshot.databaseDescriptor;
-        _databaseIDByName[snapshot.databaseDescriptor.name] = snapshot.databaseDescriptor.id;
+        auto descriptor = snapshot.databaseDescriptor;
 
-        return snapshot.databaseDescriptor;
+        enforce(descriptor.id.value.length > 0, "Database ID cannot be empty");
+        enforce(descriptor.storageState != StorageState.UNKNOWN,
+            "Database storage state cannot be unknown");
+        enforce(descriptor.id !in _databaseByID, "Database ID already exists");
+        enforce(descriptor.name !in _databaseIDByName, "Database name already exists");
+        validate(descriptor);
+
+        return descriptor;
     }
 
     private DatabaseDescriptor applyDelta(const DatabaseDescriptorDelta delta)
@@ -512,6 +550,17 @@ final class DatabaseCatalog
                     {
                         databaseDescriptor.notes = fieldDefinition.value;
                     }
+                    else
+                    {
+                        enforce(false, "Database descriptor field cannot be unknown");
+                    }
+                }
+
+                validate(databaseDescriptor);
+
+                if (auto existingID = databaseDescriptor.name in _databaseIDByName)
+                {
+                    enforce(*existingID == delta.databaseID, "Database name already exists");
                 }
                 break;
             }
@@ -531,9 +580,6 @@ final class DatabaseCatalog
             // D treats assert(false) as an unreachable code marker.
             assert(false, "Invalid DatabaseDescriptorUpdateAction");
         }
-
-        _databaseByID[delta.databaseID] = databaseDescriptor;
-        _databaseIDByName[databaseDescriptor.name] = delta.databaseID;
 
         return databaseDescriptor;
     }
@@ -581,13 +627,17 @@ final class DatabaseCatalog
     auto id = DatabaseID("db-catalog-entry");
     auto descriptor = DatabaseDescriptor(id, "catalog entry", "snapshot notes");
     CatalogEntry snapshotEntry = DatabaseDescriptorSnapshot(descriptor);
-    auto fieldDefinition = DatabaseDescriptorDeltaFieldDefinition(
+    auto nameFieldDefinition = DatabaseDescriptorDeltaFieldDefinition(
+        DatabaseDescriptorUpdatableField.NAME,
+        "renamed catalog entry",
+    );
+    auto notesFieldDefinition = DatabaseDescriptorDeltaFieldDefinition(
         DatabaseDescriptorUpdatableField.NOTES,
         "updated notes",
     );
     auto payload = DatabaseDescriptorDeltaPayload(
         DatabaseDescriptorUpdateAction.UPDATE,
-        [fieldDefinition],
+        [nameFieldDefinition, notesFieldDefinition],
     );
     CatalogEntry deltaEntry = DatabaseDescriptorDelta(id, payload);
 
@@ -595,4 +645,34 @@ final class DatabaseCatalog
     catalog.addEntry(deltaEntry);
 
     assert(catalog.entries.length == initialEntryCount + 2);
+    assert(catalog._databaseByID[id].name == "renamed catalog entry");
+    assert(catalog._databaseByID[id].notes == "updated notes");
+    assert("catalog entry" !in catalog._databaseIDByName);
+    assert(catalog._databaseIDByName["renamed catalog entry"] == id);
+
+    try
+    {
+        auto duplicateDescriptor = DatabaseDescriptor(
+            DatabaseID("db-duplicate-name"),
+            "renamed catalog entry",
+            "duplicate notes",
+        );
+        catalog.addEntry(CatalogEntry(DatabaseDescriptorSnapshot(duplicateDescriptor)));
+        assert(0, "Expected duplicate database name to be rejected");
+    }
+    catch (Exception)
+    {
+    }
+
+    try
+    {
+        auto duplicateFieldsPayload = DatabaseDescriptorDeltaPayload(
+            DatabaseDescriptorUpdateAction.UPDATE,
+            [notesFieldDefinition, notesFieldDefinition],
+        );
+        assert(0, "Expected duplicate delta fields to be rejected");
+    }
+    catch (Exception)
+    {
+    }
 }
