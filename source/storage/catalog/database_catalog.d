@@ -96,7 +96,7 @@ struct DatabaseID
 struct DatabaseDescriptor
 {
     /// The unique identifier of the database.
-    private const DatabaseID _id;
+    private DatabaseID _id;
 
     /// The name of the database.
     private @NotEmpty() @MaxLength(128) string _name;
@@ -126,7 +126,7 @@ struct DatabaseDescriptor
         this._storageState = StorageState.ACTIVE;
     }
 
-    @property DatabaseID id() const
+    @property const(DatabaseID) id() const
     {
         return _id;
     }
@@ -421,8 +421,8 @@ alias CatalogEntry = SumType!(DatabaseDescriptorSnapshot, DatabaseDescriptorDelt
 final class DatabaseCatalog
 {
     private static DatabaseCatalog _instance;
-    private RedBlackTree!string _databaseIDIndex;
-    private RedBlackTree!string _databaseNameIndex;
+    private DatabaseDescriptor[DatabaseID] _databaseByID;
+    private DatabaseID[string] _databaseIDByName;
     private CatalogEntry[] _entries;
 
     private this()
@@ -443,9 +443,49 @@ final class DatabaseCatalog
         return _entries;
     }
 
-    void addEntry(CatalogEntry entry)
+    void addEntry(const CatalogEntry entry)
     {
+        // Build the descriptor via applying the entry
+        this.applyEntry(entry);
         _entries ~= entry;
+    }
+
+    void applyEntry(const CatalogEntry entry)
+    {
+        auto descriptor = entry.match!(
+            (const ref DatabaseDescriptorSnapshot snapshot) => applySnapshot(snapshot),
+            (const ref DatabaseDescriptorDelta delta) => applyDelta(delta),
+        );
+
+        _databaseByID[descriptor.id] = descriptor;
+        _databaseIDByName[descriptor.name] = descriptor.id;
+    }
+
+    private ref const(DatabaseDescriptor) applySnapshot(const DatabaseDescriptorSnapshot snapshot)
+    {
+        // This will introduce a snapshot entry in the catalog.
+        // 
+        return *new DatabaseDescriptor(DatabaseID(""), "", "");
+    }
+
+    private ref const(DatabaseDescriptor) applyDelta(const DatabaseDescriptorDelta delta)
+    {
+        // This will update the descriptor in the catalog.
+        // TODO: replace with actual implementation.
+        return *new DatabaseDescriptor(DatabaseID(""), "", "");
+    }
+
+    void logEntries() const
+    {
+        foreach (const CatalogEntry entry; _entries)
+        {
+            // Log Entries as is.
+        }
+    }
+
+    void logEntries(const DatabaseID id) const
+    {
+        // Log entries associated to a databaseID
     }
 
     Nullable!DatabaseDescriptor getDatabase(const DatabaseID id) const
