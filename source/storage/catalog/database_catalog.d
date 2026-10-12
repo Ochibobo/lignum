@@ -1,14 +1,14 @@
 module storage.catalog.database_catalog;
 
 import object : hashOf;
-import std.container : RedBlackTree;
 import std.datetime : Clock, SysTime;
+import std.exception : enforce;
 import std.format : format;
 import std.path : buildPath;
+import std.stdio : writeln;
 import std.string : startsWith;
 import std.sumtype : SumType, match;
 import std.typecons : Nullable;
-import std.variant : Variant;
 import storage.types.validation : MaxLength, NotEmpty;
 
 version (Have_unit_threaded)
@@ -25,11 +25,12 @@ else
 
 const string DATABASES_HOST_DIR = "../../../databases";
 
-/** 
+/**
  * A marker for a database state.
  */
 enum StorageState
 {
+    UNKNOWN,
     ACTIVE,
     MARKED_FOR_DELETION,
 }
@@ -174,6 +175,16 @@ struct DatabaseDescriptor
         _lastModifiedAt = Clock.currTime();
     }
 
+    bool isMarkedForDeletion()
+    {
+        return this._storageState == StorageState.MARKED_FOR_DELETION;
+    }
+
+    bool isActive()
+    {
+        return this._storageState.ACTIVE;
+    }
+
     void markAsActive()
     {
         _storageState = StorageState.ACTIVE;
@@ -247,39 +258,44 @@ struct DatabaseDescriptorSnapshot
  */
 enum DatabaseDescriptorUpdateAction
 {
+    UNKNOWN,
     UPDATE,
     DELETE,
 }
 
 /** 
+ * Set of updatable fields in a DatabaseDescriptor
+ */
+enum DatabaseDescriptorUpdatableField
+{
+    NAME,
+    NOTES
+}
+
+/**
  * Description of the field payload used in the delta operation.
  */
 struct DatabaseDescriptorDeltaFieldDefinition
 {
-    private string _fieldName;
-    private Variant _fieldValue;
+    private const(DatabaseDescriptorUpdatableField) _fieldName;
+    private const(string) _value;
 
     @disable this();
 
-    this(const string fieldName, const Variant fieldValue)
+    this(const DatabaseDescriptorUpdatableField fieldName, const string value)
     {
         this._fieldName = fieldName;
-        this._fieldValue = fieldValue;
+        this._value = value;
     }
 
-    @property string fieldName() const
+    @property const(DatabaseDescriptorUpdatableField) fieldName() const
     {
         return this._fieldName;
     }
 
-    @property Variant fieldValue() const
+    @property const(string) value() const
     {
-        return this._fieldValue;
-    }
-
-    TypeInfo fieldType() const
-    {
-        return this._fieldValue.type;
+        return this._value;
     }
 
     // TODO: implement toString
@@ -295,25 +311,29 @@ struct DatabaseDescriptorDeltaFieldDefinition
 struct DatabaseDescriptorDeltaPayload
 {
     private DatabaseDescriptorUpdateAction _action;
-    private Nullable!DatabaseDescriptorDeltaFieldDefinition _deltaFieldDefinition;
+    private const DatabaseDescriptorDeltaFieldDefinition[] _deltaFieldDefinitions;
 
     @disable this();
 
     this(const DatabaseDescriptorUpdateAction action,
-        const Nullable!DatabaseDescriptorDeltaFieldDefinition deltaFieldDefinition)
+        const DatabaseDescriptorDeltaFieldDefinition[] deltaFieldDefinitions)
     {
         this._action = action;
-        this._deltaFieldDefinition = deltaFieldDefinition;
+
+        enforce(action == DatabaseDescriptorUpdateAction.UPDATE ? deltaFieldDefinitions.length > 0 : deltaFieldDefinitions.length == 0,
+            "In case of update action, the delta field definition must be present, otherwise it must be absent.");
+
+        this._deltaFieldDefinitions = deltaFieldDefinitions;
     }
 
-    @property DatabaseDescriptorUpdateAction action() const
+    @property const(DatabaseDescriptorUpdateAction) action() const
     {
         return this._action;
     }
 
-    @property Nullable!DatabaseDescriptorDeltaFieldDefinition deltaFieldDefinition() const
+    @property const(DatabaseDescriptorDeltaFieldDefinition)[] deltaFieldDefinition() const
     {
-        return this._deltaFieldDefinition;
+        return this._deltaFieldDefinitions;
     }
 }
 
@@ -378,22 +398,22 @@ alias CatalogEntry = SumType!(DatabaseDescriptorSnapshot, DatabaseDescriptorDelt
             (ref DatabaseDescriptorDelta storedDelta) => false,
     ));
 
-    Variant fieldValue = "updated notes";
-    auto fieldDefinition = DatabaseDescriptorDeltaFieldDefinition("notes", fieldValue);
-    Nullable!DatabaseDescriptorDeltaFieldDefinition nullableFieldDefinition = fieldDefinition;
+    auto fieldDefinition = DatabaseDescriptorDeltaFieldDefinition(
+        DatabaseDescriptorUpdatableField.NOTES,
+        "updated notes",
+    );
     auto payload = DatabaseDescriptorDeltaPayload(
         DatabaseDescriptorUpdateAction.UPDATE,
-        nullableFieldDefinition,
+        [fieldDefinition],
     );
     auto delta = DatabaseDescriptorDelta(id, payload);
     CatalogEntry deltaEntry = delta;
 
     assert(delta.databaseID == id);
     assert(delta.payload.action == DatabaseDescriptorUpdateAction.UPDATE);
-    assert(!delta.payload.deltaFieldDefinition.isNull);
-    assert(delta.payload.deltaFieldDefinition.get.fieldName == "notes");
-    assert(delta.payload.deltaFieldDefinition.get.fieldType == typeid(string));
-    assert(delta.payload.deltaFieldDefinition.get.fieldValue.get!string == "updated notes");
+    assert(delta.payload.deltaFieldDefinition.length == 1);
+    assert(delta.payload.deltaFieldDefinition[0].fieldName == DatabaseDescriptorUpdatableField.NOTES);
+    assert(delta.payload.deltaFieldDefinition[0].value == "updated notes");
     assert(deltaEntry.match!(
             (ref DatabaseDescriptorSnapshot storedSnapshot) => false,
             (ref DatabaseDescriptorDelta storedDelta) => true,
@@ -401,12 +421,12 @@ alias CatalogEntry = SumType!(DatabaseDescriptorSnapshot, DatabaseDescriptorDelt
 
     auto deletePayload = DatabaseDescriptorDeltaPayload(
         DatabaseDescriptorUpdateAction.DELETE,
-        Nullable!DatabaseDescriptorDeltaFieldDefinition.init,
+        DatabaseDescriptorDeltaFieldDefinition[].init,
     );
     auto deleteDelta = DatabaseDescriptorDelta(id, deletePayload);
 
     assert(deleteDelta.payload.action == DatabaseDescriptorUpdateAction.DELETE);
-    assert(deleteDelta.payload.deltaFieldDefinition.isNull);
+    assert(deleteDelta.payload.deltaFieldDefinition.length == 0);
 
     static assert(!__traits(compiles, DatabaseDescriptorSnapshot()));
     static assert(!__traits(compiles, DatabaseDescriptorDeltaFieldDefinition()));
@@ -461,18 +481,61 @@ final class DatabaseCatalog
         _databaseIDByName[descriptor.name] = descriptor.id;
     }
 
-    private ref const(DatabaseDescriptor) applySnapshot(const DatabaseDescriptorSnapshot snapshot)
+    private DatabaseDescriptor applySnapshot(const DatabaseDescriptorSnapshot snapshot)
     {
-        // This will introduce a snapshot entry in the catalog.
-        // 
-        return *new DatabaseDescriptor(DatabaseID(""), "", "");
+        _databaseByID[snapshot.databaseDescriptor.id] = snapshot.databaseDescriptor;
+        _databaseIDByName[snapshot.databaseDescriptor.name] = snapshot.databaseDescriptor.id;
+
+        return snapshot.databaseDescriptor;
     }
 
-    private ref const(DatabaseDescriptor) applyDelta(const DatabaseDescriptorDelta delta)
+    private DatabaseDescriptor applyDelta(const DatabaseDescriptorDelta delta)
     {
-        // This will update the descriptor in the catalog.
-        // TODO: replace with actual implementation.
-        return *new DatabaseDescriptor(DatabaseID(""), "", "");
+        auto storedDescriptor = delta.databaseID in _databaseByID;
+        enforce(storedDescriptor !is null, "Associated database descriptor does not exist");
+        auto databaseDescriptor = *storedDescriptor;
+
+        switch (delta.payload.action)
+        {
+        case DatabaseDescriptorUpdateAction.UPDATE:
+            {
+                foreach (const DatabaseDescriptorDeltaFieldDefinition fieldDefinition;
+                    delta.payload.deltaFieldDefinition)
+                {
+                    // NAME update.
+                    if (fieldDefinition.fieldName == DatabaseDescriptorUpdatableField.NAME)
+                    {
+                        databaseDescriptor.name = fieldDefinition.value;
+                    }
+                    // NOTE update.
+                    else if (fieldDefinition.fieldName == DatabaseDescriptorUpdatableField.NOTES)
+                    {
+                        databaseDescriptor.notes = fieldDefinition.value;
+                    }
+                }
+                break;
+            }
+        case DatabaseDescriptorUpdateAction.DELETE:
+            if (databaseDescriptor.isMarkedForDeletion)
+            {
+                writeln(format!"Database '%s' is already marked for deletion"(
+                        databaseDescriptor.name));
+            }
+            else
+            {
+                databaseDescriptor.markForDeletion();
+            }
+            break;
+        default:
+            // NB: This remains reachable in release builds.
+            // D treats assert(false) as an unreachable code marker.
+            assert(false, "Invalid DatabaseDescriptorUpdateAction");
+        }
+
+        _databaseByID[delta.databaseID] = databaseDescriptor;
+        _databaseIDByName[databaseDescriptor.name] = delta.databaseID;
+
+        return databaseDescriptor;
     }
 
     void logEntries() const
@@ -518,12 +581,13 @@ final class DatabaseCatalog
     auto id = DatabaseID("db-catalog-entry");
     auto descriptor = DatabaseDescriptor(id, "catalog entry", "snapshot notes");
     CatalogEntry snapshotEntry = DatabaseDescriptorSnapshot(descriptor);
-    Variant fieldValue = "updated notes";
-    auto fieldDefinition = DatabaseDescriptorDeltaFieldDefinition("notes", fieldValue);
-    Nullable!DatabaseDescriptorDeltaFieldDefinition nullableFieldDefinition = fieldDefinition;
+    auto fieldDefinition = DatabaseDescriptorDeltaFieldDefinition(
+        DatabaseDescriptorUpdatableField.NOTES,
+        "updated notes",
+    );
     auto payload = DatabaseDescriptorDeltaPayload(
         DatabaseDescriptorUpdateAction.UPDATE,
-        nullableFieldDefinition,
+        [fieldDefinition],
     );
     CatalogEntry deltaEntry = DatabaseDescriptorDelta(id, payload);
 
