@@ -1,4 +1,4 @@
-module storage.catalog.storage_manifest;
+module storage.catalog.database_catalog;
 
 import object : hashOf;
 import std.container : RedBlackTree;
@@ -213,7 +213,7 @@ struct DatabaseDescriptor
 
 /** 
  * DatabaseDescriptors have a different disk representation, depending on whether
- * an entry in the manifest is a snapshot of the entire descriptor or just a delta.
+ * an entry in the catalog is a snapshot of the entire descriptor or just a delta.
  */
 
 /**
@@ -358,18 +358,18 @@ struct DatabaseDescriptorDelta
 }
 
 /** 
- * An entry in the StorageManifest can either be a `DatabaseDescriptorSnapshot`
+ * An entry in the DatabaseCatalog can either be a `DatabaseDescriptorSnapshot`
  * or a `DatabaseDescriptorDelta`.
- * This `StorageManifestEntry` is a `Union` of both
+ * This `CatalogEntry` is a `Union` of both.
  */
-alias StorageManifestEntry = SumType!(DatabaseDescriptorSnapshot, DatabaseDescriptorDelta);
+alias CatalogEntry = SumType!(DatabaseDescriptorSnapshot, DatabaseDescriptorDelta);
 
-@("Manifest entries represent snapshots and deltas") unittest
+@("Catalog entries represent snapshots and deltas") unittest
 {
     auto id = DatabaseID("db-123");
     auto descriptor = DatabaseDescriptor(id, "alpha", "initial notes");
     auto snapshot = DatabaseDescriptorSnapshot(descriptor);
-    StorageManifestEntry snapshotEntry = snapshot;
+    CatalogEntry snapshotEntry = snapshot;
 
     assert(snapshot.databaseDescriptor.id == id);
     assert(snapshot.databaseDescriptor.name == "alpha");
@@ -386,7 +386,7 @@ alias StorageManifestEntry = SumType!(DatabaseDescriptorSnapshot, DatabaseDescri
         nullableFieldDefinition,
     );
     auto delta = DatabaseDescriptorDelta(id, payload);
-    StorageManifestEntry deltaEntry = delta;
+    CatalogEntry deltaEntry = delta;
 
     assert(delta.databaseID == id);
     assert(delta.payload.action == DatabaseDescriptorUpdateAction.UPDATE);
@@ -415,35 +415,35 @@ alias StorageManifestEntry = SumType!(DatabaseDescriptorSnapshot, DatabaseDescri
 }
 
 /**
-*   A storage manifest describes the @Unique() location and properties of the databases on disk.
+*   A database catalog describes the @Unique() location and properties of the databases on disk.
 *   It contains metadata about all databases reachable via the file paths.
 */
-final class StorageManifest
+final class DatabaseCatalog
 {
-    private static StorageManifest _instance;
+    private static DatabaseCatalog _instance;
     private RedBlackTree!string _databaseIDIndex;
     private RedBlackTree!string _databaseNameIndex;
-    private StorageManifestEntry[] _entries;
+    private CatalogEntry[] _entries;
 
     private this()
     {
     }
 
-    static StorageManifest getInstance()
+    static DatabaseCatalog getInstance()
     {
         if (_instance is null)
         {
-            _instance = new StorageManifest();
+            _instance = new DatabaseCatalog();
         }
         return _instance;
     }
 
-    @property const(StorageManifestEntry)[] entries() const
+    @property const(CatalogEntry)[] entries() const
     {
         return _entries;
     }
 
-    void addEntry(StorageManifestEntry entry)
+    void addEntry(CatalogEntry entry)
     {
         _entries ~= entry;
     }
@@ -471,13 +471,13 @@ final class StorageManifest
 }
 
 @Serial
-@("StorageManifest stores snapshot and delta entries") unittest
+@("DatabaseCatalog stores snapshot and delta entries") unittest
 {
-    auto manifest = StorageManifest.getInstance();
-    auto initialEntryCount = manifest.entries.length;
-    auto id = DatabaseID("db-manifest-entry");
-    auto descriptor = DatabaseDescriptor(id, "manifest entry", "snapshot notes");
-    StorageManifestEntry snapshotEntry = DatabaseDescriptorSnapshot(descriptor);
+    auto catalog = DatabaseCatalog.getInstance();
+    auto initialEntryCount = catalog.entries.length;
+    auto id = DatabaseID("db-catalog-entry");
+    auto descriptor = DatabaseDescriptor(id, "catalog entry", "snapshot notes");
+    CatalogEntry snapshotEntry = DatabaseDescriptorSnapshot(descriptor);
     Variant fieldValue = "updated notes";
     auto fieldDefinition = DatabaseDescriptorDeltaFieldDefinition("notes", fieldValue);
     Nullable!DatabaseDescriptorDeltaFieldDefinition nullableFieldDefinition = fieldDefinition;
@@ -485,10 +485,10 @@ final class StorageManifest
         DatabaseDescriptorUpdateAction.UPDATE,
         nullableFieldDefinition,
     );
-    StorageManifestEntry deltaEntry = DatabaseDescriptorDelta(id, payload);
+    CatalogEntry deltaEntry = DatabaseDescriptorDelta(id, payload);
 
-    manifest.addEntry(snapshotEntry);
-    manifest.addEntry(deltaEntry);
+    catalog.addEntry(snapshotEntry);
+    catalog.addEntry(deltaEntry);
 
-    assert(manifest.entries.length == initialEntryCount + 2);
+    assert(catalog.entries.length == initialEntryCount + 2);
 }
