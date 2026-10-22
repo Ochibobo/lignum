@@ -2,25 +2,33 @@
 	"authors": [
 		"Ochibobo"
 	],
-	"copyright": "Copyright © 2026, Ochibobo",
-	"description": "A KV store in D",
 	"license": "MIT",
+	"copyright": "Copyright © 2026, Ochibobo",
 	"name": "lignum",
+	"description": "A KV store in D",
+	"dependencies": {
+		"toml": "~>2.0.1"
+	},
 	"configurations": [
 		{
-			"name": "library",
-			"targetType": "library"
+			"targetType": "executable",
+			"name": "application",
+			"mainSourceFile": "source/app.d"
 		},
 		{
-			"name": "unittest",
-			"targetType": "executable",
-			"mainSourceFile": "tests/runner.d",
+			"targetType": "library",
+			"name": "library"
+		},
+		{
 			"excludedSourceFiles": [
 				"source/app.d"
 			],
 			"dependencies": {
 				"unit-threaded": "~>2.2.5"
-			}
+			},
+			"targetType": "executable",
+			"mainSourceFile": "tests/runner.d",
+			"name": "unittest"
 		}
 	]
 }
