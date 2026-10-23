@@ -32,7 +32,7 @@ interface StorageReader
     /**
      * Returns the total stored object or file length.
      */
-    @property ulong length() const;
+    ulong length();
 
     /**
      * Releases the underlying file or remote resource.
