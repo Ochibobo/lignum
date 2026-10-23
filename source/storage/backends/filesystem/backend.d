@@ -10,6 +10,8 @@ import storage.backends.backend : StorageBackend;
 import storage.config.options : FileSystemStorageOptions;
 import storage.io.reader : StorageReader;
 import storage.io.writer : StorageWriter;
+import storage.backends.filesystem.reader : FileSystemFileReader;
+import storage.backends.filesystem.writer : FileSystemFileWriter, WriteMode;
 
 version (Have_unit_threaded)
 {
@@ -56,6 +58,7 @@ final class FileSystemBackend : StorageBackend
         scope (failure)
         {
             import std.file : remove;
+
             if (temporaryPath.exists)
                 remove(temporaryPath);
         }
@@ -98,7 +101,7 @@ final class FileSystemBackend : StorageBackend
      */
     override StorageReader openForRead(string fileName)
     {
-        throw new NotImplementedError("openForRead");
+        return new FileSystemFileReader(resolveKey(fileName));
     }
 
     /**
@@ -112,7 +115,7 @@ final class FileSystemBackend : StorageBackend
      */
     override StorageWriter openForWrite(string fileName)
     {
-        throw new NotImplementedError("openForWrite");
+        return new FileSystemFileWriter(resolveKey(fileName), WriteMode.WRITE);
     }
 
     /**
@@ -126,7 +129,7 @@ final class FileSystemBackend : StorageBackend
      */
     override StorageWriter openForAppend(string fileName)
     {
-        throw new NotImplementedError("openForAppend");
+        return new FileSystemFileWriter(resolveKey(fileName), WriteMode.APPEND);
     }
 }
 
@@ -177,4 +180,69 @@ final class FileSystemBackend : StorageBackend
 
     assertThrown!Exception(backend.exists("../OPTIONS.toml"));
     assertThrown!Exception(backend.exists(rootPath));
+}
+
+@("FileSystemBackend reads and replaces binary objects") unittest
+{
+    import std.file : rmdirRecurse, tempDir;
+    import std.path : buildPath;
+
+    auto rootPath = buildPath(tempDir(), "duramen-backend-" ~ randomUUID().toString());
+    scope (exit)
+    {
+        if (rootPath.exists)
+            rootPath.rmdirRecurse;
+    }
+
+    FileSystemStorageOptions options;
+    options.rootPath = rootPath;
+    auto backend = new FileSystemBackend(options);
+    immutable ubyte[] expected = [0x00, 0x01, 0x7F, 0x80, 0xFE, 0xFF];
+
+    backend.replaceObject("binary.data", expected);
+
+    assert(backend.readObject("binary.data") == expected);
+}
+
+@("FileSystemBackend supports empty and nested objects") unittest
+{
+    import std.file : rmdirRecurse, tempDir;
+    import std.path : buildPath;
+
+    auto rootPath = buildPath(tempDir(), "duramen-backend-" ~ randomUUID().toString());
+    scope (exit)
+    {
+        if (rootPath.exists)
+            rootPath.rmdirRecurse;
+    }
+
+    FileSystemStorageOptions options;
+    options.rootPath = rootPath;
+    auto backend = new FileSystemBackend(options);
+
+    backend.replaceObject("catalog/empty.data", []);
+
+    assert(backend.exists("catalog/empty.data"));
+    assert(backend.readObject("catalog/empty.data").length == 0);
+}
+
+@("FileSystemBackend reports missing objects") unittest
+{
+    import std.file : FileException, rmdirRecurse, tempDir;
+    import std.exception : assertThrown;
+    import std.path : buildPath;
+
+    auto rootPath = buildPath(tempDir(), "duramen-backend-" ~ randomUUID().toString());
+    scope (exit)
+    {
+        if (rootPath.exists)
+            rootPath.rmdirRecurse;
+    }
+
+    FileSystemStorageOptions options;
+    options.rootPath = rootPath;
+    auto backend = new FileSystemBackend(options);
+
+    assert(!backend.exists("missing.data"));
+    assertThrown!FileException(backend.readObject("missing.data"));
 }
