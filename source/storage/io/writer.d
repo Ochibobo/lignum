@@ -1,7 +1,10 @@
 module storage.io.writer;
 
 /**
- * Writer interface specification.
+ * Sequential single-owner writer interface specification.
+ *
+ * Instances are not thread-safe. Callers must ensure that a writer is
+ * accessed by only one thread at a time.
  */
 interface StorageWriter
 {
