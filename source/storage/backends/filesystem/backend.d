@@ -8,7 +8,7 @@ import std.uuid : randomUUID;
 
 import storage.backends.backend : StorageBackend;
 import storage.config.options : FileSystemStorageOptions;
-import storage.io.reader : StorageReader;
+import storage.io.reader : RandomAccessReader;
 import storage.io.writer : StorageWriter;
 import storage.backends.filesystem.reader : FileSystemFileReader;
 import storage.backends.filesystem.writer : FileSystemFileWriter, WriteMode;
@@ -97,11 +97,11 @@ final class FileSystemBackend : StorageBackend
      *   `fileName` - name of the file to open.
      *
      * Returns:
-     *   `StorageReader` for the file.
+     *   A shared `RandomAccessReader` for the file.
      */
-    override StorageReader openForRead(string fileName)
+    override shared(RandomAccessReader) openForRead(string fileName)
     {
-        return new FileSystemFileReader(resolveKey(fileName));
+        return new shared FileSystemFileReader(resolveKey(fileName));
     }
 
     /**
@@ -180,6 +180,9 @@ final class FileSystemBackend : StorageBackend
 
     assertThrown!Exception(backend.exists("../OPTIONS.toml"));
     assertThrown!Exception(backend.exists(rootPath));
+    assertThrown!Exception(backend.openForRead("../OPTIONS.toml"));
+    assertThrown!Exception(backend.openForRead(rootPath));
+    assertThrown!Exception(backend.openForRead(""));
 }
 
 @("FileSystemBackend reads and replaces binary objects") unittest
@@ -245,4 +248,73 @@ final class FileSystemBackend : StorageBackend
 
     assert(!backend.exists("missing.data"));
     assertThrown!FileException(backend.readObject("missing.data"));
+    assertThrown!Exception(backend.openForRead("missing.data"));
+}
+
+@("FileSystemBackend opens shared positional readers for independent sequential adapters") unittest
+{
+    import core.atomic : atomicLoad;
+    import std.file : rmdirRecurse, tempDir;
+    import std.path : buildPath;
+    import storage.io.sequential_reader : SequentialAccessReader;
+
+    auto rootPath = buildPath(tempDir(), "duramen-backend-" ~ randomUUID().toString());
+    scope (exit)
+        if (rootPath.exists)
+            rootPath.rmdirRecurse;
+
+    FileSystemStorageOptions options;
+    options.rootPath = rootPath;
+    StorageBackend backend = new FileSystemBackend(options);
+    backend.replaceObject("nested/table.sst", cast(const(ubyte)[]) "abcdefghij");
+
+    auto reader = backend.openForRead("nested/table.sst");
+    static assert(is(typeof(reader) == shared(RandomAccessReader)));
+    scope (exit)
+        reader.close();
+
+    auto first = SequentialAccessReader(atomicLoad(reader));
+    auto second = SequentialAccessReader(atomicLoad(reader), 5);
+    ubyte[2] destination;
+    assert(first.read(destination) == 2);
+    assert(cast(string) destination[] == "ab");
+    assert(second.read(destination) == 2);
+    assert(cast(string) destination[] == "fg");
+    assert(first.position == 2);
+    assert(second.position == 7);
+    assert(reader.length == 10);
+}
+
+@("FileSystemBackend opens replacement contents after the previous reader closes") unittest
+{
+    import std.file : rmdirRecurse, tempDir;
+    import std.path : buildPath;
+
+    auto rootPath = buildPath(tempDir(), "duramen-backend-" ~ randomUUID().toString());
+    scope (exit)
+        if (rootPath.exists)
+            rootPath.rmdirRecurse;
+
+    FileSystemStorageOptions options;
+    options.rootPath = rootPath;
+    auto backend = new FileSystemBackend(options);
+    backend.replaceObject("snapshot", cast(const(ubyte)[]) "old");
+
+    auto oldReader = backend.openForRead("snapshot");
+    scope (exit)
+        oldReader.close();
+
+    ubyte[3] oldContents;
+    assert(oldReader.readAt(0, oldContents) == oldContents.length);
+    assert(cast(string) oldContents[] == "old");
+    oldReader.close();
+
+    backend.replaceObject("snapshot", cast(const(ubyte)[]) "new");
+    auto newReader = backend.openForRead("snapshot");
+    scope (exit)
+        newReader.close();
+
+    ubyte[3] newContents;
+    assert(newReader.readAt(0, newContents) == newContents.length);
+    assert(cast(string) newContents[] == "new");
 }

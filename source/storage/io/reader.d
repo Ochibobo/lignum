@@ -3,39 +3,30 @@ module storage.io.reader;
 /**
  * Reader interface specification.
  */
-interface StorageReader
+interface RandomAccessReader
 {
-    /**
-     * Reads up to `length` bytes from the current position.
-     *
-     * ### Parameters
-     *   * `destination`: The sized buffer to write the bytes into.
-     *
-     * ### Returns
-     *   * The number of bytes read. Zero indicates `EOF`
-     */
-    size_t read(scope ubyte[] destination);
 
     /**
-     * Reads bytes starting at the supplied offset without changing
-     * the reader's current position.
+     * Reads bytes starting at the supplied offset. Concurrent calls must use
+     * independent destination buffers.
      *
      * ### Parameters
      *   * `offset`: The offset to start reading from.
      *   * `destination`: The sized buffer to write the bytes into.
      *
      * ### Returns
-     *   * The number of bytes read. Zero indicates `EOF`
+     *   * The number of bytes read. Zero indicates `EOF` for a nonempty buffer.
      */
-    size_t readAt(ulong offset, scope ubyte[] destination);
+    size_t readAt(ulong offset, scope ubyte[] destination) shared;
 
     /**
      * Returns the total stored object or file length.
      */
-    ulong length();
+    ulong length() shared;
 
     /**
      * Releases the underlying file or remote resource.
+     * The owner must finish all operations before closing the reader.
      */
-    void close();
+    void close() shared;
 }

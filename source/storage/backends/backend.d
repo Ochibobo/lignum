@@ -1,6 +1,6 @@
 module storage.backends.backend;
 
-import storage.io.reader : StorageReader;
+import storage.io.reader : RandomAccessReader;
 import storage.io.writer : StorageWriter;
 
 /**
@@ -49,9 +49,9 @@ interface StorageBackend
      *   `fileName` - name of the file to open.
      *
      * Returns:
-     *   `StorageReader` for the file.
+     *   A shared `RandomAccessReader` for the file.
      */
-    StorageReader openForRead(string fileName);
+    shared(RandomAccessReader) openForRead(string fileName);
 
     /**
      * Open a file for writing.
